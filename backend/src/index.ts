@@ -8,12 +8,30 @@ interface user {
 
 let users:user[] = []; 
 
+function updateRoomCount(roomId: string ) {
+
+  const roomMembers = users.filter((user) => 
+    user.room === roomId
+  );
+
+  roomMembers.forEach((user) => {
+    user.socket.send(
+      JSON.stringify({
+        type: "count",
+        payload :{
+          count: roomMembers.length,
+        }  
+      })
+    );
+  });
+}
+
 wss.on("connection" , (socket)=>{
 
   socket.on("message" , (message)=>{
 
-    interface mess {
-      type : "join" | "chat",
+    interface message {
+      type : "join" | "chat" | "exitRoom",
       payload? : {
         content? : string,
         room? : string
@@ -25,25 +43,57 @@ wss.on("connection" , (socket)=>{
     // }
 
     try{
-      const messageObject : mess = JSON.parse(message.toString());
+      const messageObject : message = JSON.parse(message.toString());
 
       if (messageObject.type === "join"){
 
-        if ( messageObject.payload?.room){
+        const matched = users.some(
+          user =>user.socket === socket && user.room === messageObject.payload?.room
+        );
+
+        if (!matched && messageObject.payload?.room){
           users.push({
             socket : socket,
-            room : messageObject.payload?.room
+            room : messageObject.payload.room
           })
+          updateRoomCount(messageObject.payload.room)
+
+          console.log(users) 
+        }
+
+        if(matched){
+          console.log("user already exists !!")
+        }
+        
+      }
+
+      if(messageObject.type === "chat"){
+        const room = users.find(u => u.socket === socket)?.room;
+
+        if(room){
+          const roomUsers = users.filter(user => (user.room === room))
+          roomUsers.forEach(user => user.socket.send(JSON.stringify(messageObject)))
+        }
+      }
+
+      if (messageObject.type === "exitRoom"){
+        const user = users.find(user => user.socket === socket);
+
+        if(user && user.room !== ""){
+          const userRoom = user.room;
+          user.room = "";
+          updateRoomCount(userRoom)
+        
+          user.socket.send(
+            JSON.stringify({
+              type: "count",
+              payload :{
+                count: 0,
+              }  
+            })
+          );  
         }
         console.log(users)
-      }
-
-      else if(messageObject.type === "chat"){
-        users.forEach(user => user.socket.send(JSON.stringify(messageObject.payload?.content)))
-      }
-
-      else{
-        socket.send("join first!!")
       }
     }
     catch(e){
