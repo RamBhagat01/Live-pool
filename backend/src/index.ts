@@ -1,197 +1,344 @@
-import { WebSocketServer , WebSocket} from "ws";
-const wss = new WebSocketServer({port : 8080});
+import { WebSocketServer, WebSocket } from "ws";
+const wss = new WebSocketServer({ port: 8080 });
 
-interface user {
-  socket : WebSocket,
-  room : string,
-  option : 1 | 2 | 3 | 4 | ""
+interface User {
+  socket: WebSocket;
+  room: string;
+  option: 1 | 2 | 3 | 4 | "";
 }
 
-let users:user[] = []; 
+interface mess {
+  type: "join" | "chat" | "exitRoom" | "percentFetch";
+  payload?: {
+    room?: string;
+    option?: 1 | 2 | 3 | 4 | "";
+  };
+}
 
-function updateRoomCount(roomId: string ) {
+let users: User[] = [];
 
-  const roomMembers = users.filter((user) => 
-    user.room === roomId
+function updateRoomCount(roomId: string) {
+
+  const roomMembers = users.filter(
+    (user) => user.room === roomId
   );
 
   roomMembers.forEach((user) => {
     user.socket.send(
       JSON.stringify({
         type: "count",
-        payload :{
-          count: roomMembers.length,
-        }  
+        payload: {
+          count: roomMembers.length
+        }
       })
     );
   });
 }
 
-wss.on("connection" , (socket)=>{
+function updatePercent(roomId: string) {
 
-  socket.on("message" , (message)=>{
+  const roomUsers = users.filter((user) => user.room === roomId
+  );
 
-    interface message {
-      type : "join" | "chat" | "exitRoom"| "percentFetch" | "checkRoom",
-      payload? : {
-        content? : string,
-        room? : string
-        option? : 1 | 2 | 3 | 4 | "";
-      }
-    }
+  const totalUsers = roomUsers.length;
 
-    // {
-    //   "type" : "join",
-    // }
+  if (totalUsers === 0) {
+    return;
+  }
 
-    try{
-      const messageObject : message = JSON.parse(message.toString());
+  const count1 = roomUsers.filter((user) => 
+    user.option === 1
+  ).length;
 
-      if (messageObject.type === "join"){
+  const count2 = roomUsers.filter((user) => 
+    user.option === 2
+  ).length;
 
-        // check if array has user already !!
-        const matched = users.some(
-          user =>user.socket === socket && user.room === messageObject.payload?.room
-        );
+  const count3 = roomUsers.filter((user) => 
+    user.option === 3
+  ).length;
 
-        //to push new user into the array !!
-        if (!matched && messageObject.payload?.room ){
-          users.push({
-            socket : socket,
-            room : messageObject.payload.room,
-            option : ""
-          })
-          updateRoomCount(messageObject.payload.room)
+  const count4 = roomUsers.filter((user) => 
+    user.option === 4
+  ).length;
 
-          console.log(users) 
-        }
 
-        if(matched){
-          console.log("user already exists !!")
-        }
-        
-      }
+  const percent1 = (count1 / totalUsers) * 100;
+  const percent2 = (count2 / totalUsers) * 100;
+  const percent3 = (count3 / totalUsers) * 100;
+  const percent4 = (count4 / totalUsers) * 100;
 
-      if(messageObject.type === "checkRoom"){
 
-        const user = users.find(u => u.socket === socket);
-
-        if(user){
-
-          if(user.room !== ""){
-            user.socket.send(
-              JSON.stringify({
-                type : "checkRoom",
-                payload : {
-                  content : true //already in a room  
-                }
-              })
-            )
-          }
-          else{
-            user.socket.send(
-              JSON.stringify({
-                type : "checkRoom",
-                payload : {
-                  content : false //not in a room  
-                }
-              })
-            )
+  roomUsers.forEach((user) => {
+    user.socket.send(
+      JSON.stringify({
+        type: "fetchPercent",
+        payload: {
+          content: {
+            percent1: percent1,
+            percent2: percent2,
+            percent3: percent3,
+            percent4: percent4
           }
         }
+      })
+    );
 
-      }
+  });
+}
 
-      if(messageObject.type === "chat"){
+wss.on("connection", (socket) => {
 
-        //inserting option to already created array object !!
-        const user = users.find(u => u.socket === socket);
+  console.log("new user connected !!");
 
-        if(user && messageObject.payload?.option){
-          user.option = messageObject.payload.option
-        } 
+  socket.on("message", (message) => {
 
-        //sending back reply to frontend !!
-        const room = users.find(u => u.socket === socket)?.room;
+    try {
+      const messageObject: mess = JSON.parse(message.toString());
 
-        if(room){
-          const roomUsers = users.filter(user => (user.room === room))
-          roomUsers.forEach(user => user.socket.send(JSON.stringify(
+      if(messageObject.type === "join") {
+
+        const room = messageObject.payload?.room?.trim();
+        if (!room) {
+          socket.send(
             JSON.stringify({
-              type : "chat",
-              payload : {
-                content : "users array!!"
-              } 
-            })
-          )))
-        }
-      }
-
-      if (messageObject.type === "percentFetch"){
-
-        const userRoom = users.find(u => u.socket === socket)?.room;
-        const userinRoom = users.filter(u => u.room === userRoom);
-
-        if(userinRoom){
-          const totalUsers = userinRoom.length;
-
-          const count1 = userinRoom.filter(u => u.option === 1).length
-          const percent1 = (count1 / totalUsers) *100
-
-          const count2 = userinRoom.filter(u => u.option === 2).length
-          const percent2 = (count2 / totalUsers) *100
-
-          const count3 = userinRoom.filter(u => u.option === 3).length
-          const percent3 = (count3 / totalUsers) *100
-
-          const count4 = userinRoom.filter(u => u.option === 4).length
-          const percent4 = (count4 / totalUsers) *100
-
-          userinRoom.forEach(user => user.socket.send(
-            JSON.stringify({
-              type : "fetchPercent",
-              payload :{
-                content : {
-                  percent1 : percent1,
-                  percent2 : percent2,
-                  percent3 : percent3,
-                  percent4 : percent4,
-                }
+              type: "joinError",
+              payload: {
+                content: "Room name is empty"
               }
             })
-          ))
+          );
+
+          return;
         }
-      }
 
-      if (messageObject.type === "exitRoom"){
-        const user = users.find(user => user.socket === socket);
 
-        if(user && user.room !== ""){
-          const userRoom = user.room;
-          user.room = "";
-          updateRoomCount(userRoom)
-        
-          user.socket.send(
+        // Check whether this socket already has a room
+
+        const user = users.find((user) => 
+          user.socket === socket
+        );
+
+        if (user) {
+          if (user.room !== "") {
+            socket.send(
+              JSON.stringify({
+                type: "alreadyInRoom"
+              })
+            );
+            return;
+          }
+
+          user.room = room;
+          user.option = "";
+
+          socket.send(
             JSON.stringify({
-              type: "count",
-              payload :{
-                count: 0,
-              }  
+              type: "joinSuccess",
+              payload: {
+                room: room
+              }
             })
-          );  
+          );
+
+          updateRoomCount(room);
+          updatePercent(room);
+          console.log(users);
+          return;
         }
-        console.log(users)
+
+        users.push({
+          socket: socket,
+          room: room,
+          option: ""
+        });
+
+        socket.send(
+          JSON.stringify({
+            type: "joinSuccess",
+            payload: {
+              room: room
+            }
+          })
+        );
+
+        updateRoomCount(room);
+        updatePercent(room);
+
+        console.log(users);
       }
-    }
-    catch(e){
-      console.log("Invalid message is received !! " + e);
+
+      else if (messageObject.type === "chat") {
+
+        const user = users.find(
+          (user) => user.socket === socket
+        );
+
+
+        if (!user || user.room === "") {
+
+          socket.send(
+            JSON.stringify({
+              type: "error",
+              payload: {
+                content: "Join a room first"
+              }
+            })
+          );
+
+          return;
+        }
+
+
+        const option = messageObject.payload?.option;
+
+        if (
+          option !== 1 &&
+          option !== 2 &&
+          option !== 3 &&
+          option !== 4
+        ) {
+
+          socket.send(
+            JSON.stringify({
+              type: "error",
+              payload: {
+                content: "Invalid option"
+              }
+            })
+          );
+
+          return;
+        }
+
+
+        // Store selected option
+
+        user.option = option;
+
+        console.log(
+          `User selected option ${option}`
+        );
+
+
+        // Send updated percentages
+        // to everyone in the same room
+
+        updatePercent(user.room);
+      }
+
+      else if (messageObject.type === "percentFetch") {
+
+        const user = users.find((user) => 
+          user.socket === socket
+        );
+
+
+        if (!user || user.room === "") {
+
+          socket.send(
+            JSON.stringify({
+              type: "error",
+              payload: {
+                content: "Join a room first"
+              }
+            })
+          );
+
+          return;
+        }
+        updatePercent(user.room);
+      }
+
+      else if (messageObject.type === "exitRoom") {
+
+        const user = users.find((user) => 
+          user.socket === socket
+        );
+
+
+        if (!user || user.room === "") {
+
+          socket.send(
+            JSON.stringify({
+              type: "notInRoom"
+            })
+          );
+
+          return;
+        }
+
+        // Save old room
+
+        const oldRoom = user.room;
+
+        // Remove user from room
+        user.room = "";
+
+        // Reset selected option
+        user.option = "";
+
+        console.log(
+          `User exited room ${oldRoom}`
+        );
+
+        // Tell frontend that exit was successful
+        socket.send(
+          JSON.stringify({
+            type: "exitSuccess"
+          })
+        );
+
+        // Update remaining users
+        updateRoomCount(oldRoom);
+        // Update remaining users' percentages
+        updatePercent(oldRoom);
+        console.log(users);
+      }
+
     }
 
-  })
+    catch (error) {
+      console.log(
+        "Invalid message received !!", error
+      );
 
-  socket.on("close" , ()=>{
-    users = users.filter((f) => f.socket !== socket)  
+    }
+
+  });
+
+  socket.on("close", () => {
+
+    const user = users.find(
+      (user) => user.socket === socket
+    );
+
+
+    if (user && user.room !== "") {
+
+      const oldRoom = user.room;
+      // Remove user completely
+
+      users = users.filter(
+        (user) => user.socket !== socket
+      );
+
+      // Update remaining room members
+      updateRoomCount(oldRoom);
+      updatePercent(oldRoom);
+
+    }
+    else {
+      users = users.filter(
+        (user) => user.socket !== socket
+      );
+    }
+
+    console.log(
+      "User disconnected"
+    );
     console.log(users);
-  })
 
-})
+  });
+
+});
