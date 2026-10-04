@@ -1,67 +1,104 @@
 import { useEffect, useRef, useState } from "react"
 import {Unit} from "./components/Unit"
+import { Loading } from "./components/laoding"
 
 export default function App() {
 
-  const socket = useRef<WebSocket | null>(null)
+  const socket = useRef <WebSocket>(null)
 
   const inputRoom = useRef<HTMLInputElement>(null)
   const inputPool = useRef<HTMLInputElement>(null)
+
   const [memberCount, setmemberCount] = useState(0)
+  const [inaRoom , setinaRoom] = useState(false)
+
+  const [load , setLoading] = useState(false);
+  const time = 500;
 
   const [percent1 , setPercent1] = useState(0);
   const [percent2 , setPercent2] = useState(0);
   const [percent3 , setPercent3] = useState(0);
   const [percent4 , setPercent4] = useState(0);
 
-  const [countTotal , setTotalCount] = useState(0);
-  const [count1, setCount1] = useState(0);
-  const [count2, setCount2] = useState(0);
-  const [count3, setCount3] = useState(0);
-  const [count4, setCount4] = useState(0);
- 
-
   useEffect(()=>{
     const ws = new WebSocket("ws://localhost:8080");
 
+    //with the help of useRef!!
     socket.current = ws;
 
     ws.onopen = ()=>{
       console.log("Connected!!") 
     }
 
+    // automatically runs when any new message comes from the backend !! 
     ws.onmessage =(message)=>{
 
       const obj = JSON.parse(message.data)
       console.log(obj)
 
-      if (obj.type === "chat"){
-        const option = obj.payload.content;
+      // These can be the value of the "obj" !!
+      
+      // obj = {
+      //   type : "chat" | "count" | "fetchPercent",
+      //   payload? : {
+      //     content? : string,
+      //     count? : string
+      //     option? : 1 | 2 | 3 | 4 ;
+      // }
 
-        setTotalCount(c => c + 1);
+      if(obj.type === "checkRoom" ){
 
-        if (option === 1) {
-          setCount1(c => c + 1);  
-          console.log("first")   
-        }
-
-        if (option === 2) {
-          setCount2(c => c + 1);    
-        }
-
-        if (option === 3) {
-          setCount3(c => c + 1);
-        }
-
-        if (option === 4) {
-          setCount4(c => c + 1);
-        }
+        setinaRoom(obj.payload.content)
+        
       }
+
+      if (obj.type === "chat"){
+
+        // {
+        //   type : "chat",
+        //   payload : {
+        //     content : users
+        // } 
+
+        const users= obj.payload.content;
+        // console.log(users)
+      }
+
       if(obj.type === "count"){
+
+        // {
+        //   type: "count",
+        //   payload :{
+        //     count: roomMembers.length,
+        //   }  
+        // }
+
         setmemberCount(obj.payload.count);
       }
-    }
-    
+
+      if(obj.type === "fetchPercent"){
+
+        // {
+        //   type : "fetchPercent",
+        //   payload :{
+        //     content : {
+        //       percent1 : percent1,
+        //       percent2 : percent2,
+        //       percent3 : percent3,
+        //       percent4 : percent4,
+        //     }
+        //   }
+        // }
+
+        const percentObj =  obj.payload.content
+        setPercent1(percentObj.percent1)
+        setPercent2(percentObj.percent2)
+        setPercent3(percentObj.percent3)
+        setPercent4(percentObj.percent4)
+
+      }
+    }  
+
     ws.onclose =()=>{
       console.log("Disconnected!!")
     }
@@ -74,31 +111,82 @@ export default function App() {
 
   } , [])
 
-  useEffect(()=>{
+  function checkInRoom(){
 
-    setPercent1(count1/countTotal*100 || 0)
-    setPercent2(count2/countTotal*100 || 0)
-    setPercent3(count3/countTotal*100 || 0)
-    setPercent4(count4/countTotal*100 || 0)
+    if(socket.current && inputRoom.current){ 
 
-  } , [count1 ,count2 ,count3 ,count4])
+      socket.current.send(
+        JSON.stringify({
+          type : "checkRoom"
+        })
+      )
+    }
+
+  }
+
 
   function enterRoom(){
+
     if(socket.current && inputRoom.current){ 
-      if(inputRoom.current?.value !== ""){
-        socket.current.send(
-          JSON.stringify({
-            type : "join",
-            payload : {
-              room : inputRoom.current.value
-            }
-          })
-        )     
-        console.log("Request Send !!")
-      }
-      else{
-        alert("Input Is Empty!!")
-      } 
+
+      checkInRoom();
+
+      // This will return a boolean which is stored inside a variable of name "inaRoom" !!
+
+      setTimeout(()=>{
+
+        if(inaRoom === false && socket.current && inputRoom.current){
+          if(inputRoom.current?.value != "" ){
+            socket.current.send(
+              JSON.stringify({
+                type : "join",
+                payload : {
+                  room : inputRoom.current.value
+                }
+              }) 
+            ) 
+            console.log("Request Send !!");
+            setinaRoom(true)
+            fetchPercent();
+          }  
+          else{
+            alert("Input is Empty !!")
+          }
+        }
+        else if(inaRoom === true){
+          alert("Already in a Room !!")
+        } 
+      } ,time)
+    }
+    else{
+      console.log("Something Unexpected Occoured !!")
+    }
+  }
+
+   function sendOption(prop : number){
+
+    // console.log(prop)
+
+    if(socket.current){
+      socket.current.send(
+        JSON.stringify({
+          type : "chat",
+          payload : {
+            option : prop
+          }
+        })
+      )
+    }
+  }
+
+  function fetchPercent(){
+
+    if(socket.current){
+      socket.current.send(
+        JSON.stringify({
+          type : "percentFetch",  
+        })
+      )
     }
   }
 
@@ -111,6 +199,7 @@ export default function App() {
         })
       )
 
+      setinaRoom(false)
       console.log("User Exited Room!!")
     }
     else{
@@ -118,20 +207,14 @@ export default function App() {
     }
   }
 
-  function sendOption(prop : number){
+  function loadingIcon(){
 
-    // console.log(prop)
+    setLoading(true) ;
 
-    if(socket.current){
-      socket.current.send(
-        JSON.stringify({
-          type : "chat",
-          payload : {
-            content : prop
-          }
-        })
-      )
-    }
+    setTimeout(()=>{
+      setLoading(false)
+
+    } , time) 
   }
 
   return(
@@ -147,15 +230,24 @@ export default function App() {
 
           <div className="flex gap-[5px] justify-center items-center">
 
-            <button className="border-3 w-full bg-green-300 font-bold cursor-pointer" onClick={()=>{
-              enterRoom();
-            }}>ENTER ROOM</button>
+            <button className="border-3 w-full flex justify-center bg-green-300 font-bold cursor-pointer" onClick={()=>{
+              enterRoom();  
+              loadingIcon()
+            }}>
+              {load ? <Loading /> : "ENTER ROOM"}
+            </button>
+
 
             <button className="border-3 w-full bg-red-400 font-bold cursor-pointer" onClick={()=>{
               exitRoom();
               if(inputRoom.current){
                 inputRoom.current.value = ""
               }
+              setPercent1(0);
+              setPercent2(0);
+              setPercent3(0);
+              setPercent4(0);
+
             }}>EXIT ROOM</button>
 
           </div>
@@ -165,15 +257,34 @@ export default function App() {
 
         </div>
 
-        <div className="border-3 rounded-[10px] px-[5px] py-[10px] mt-[20px] bg-gray-400 flex flex-col gap-[5px]">
-
-          <span className="font-bold break-all">What is the question?</span>
-          <Unit progress={percent1.toFixed(1)} option={"pav bhaji"} onChoose={()=>{sendOption(1)}}></Unit>
-          <Unit progress={percent2.toFixed(1)} option={"chole"} onChoose={()=>{sendOption(2)}}></Unit>
-          <Unit progress={percent3.toFixed(1)} option={"paneer aloo paratha"} onChoose={()=>{sendOption(3)}}></Unit>  
-          <Unit progress={percent4.toFixed(1)} option={"masala bhindi"} onChoose={()=>{sendOption(4)}}></Unit>  
+        {(inaRoom) ? 
         
-        </div>
+          <div className="border-3 rounded-[10px] px-[5px] py-[10px] mt-[20px] bg-gray-400 flex flex-col gap-[5px]">
+
+            <span className="font-bold break-all">What is the question?</span>
+            <Unit progress={percent1.toFixed(1)} option={"pav bhaji"} onChoose={()=>{
+              sendOption(1)
+              fetchPercent();
+            }}></Unit>
+
+            <Unit progress={percent2.toFixed(1)} option={"chole"} onChoose={()=>{
+              sendOption(2)
+              fetchPercent();
+            }}></Unit>
+
+            <Unit progress={percent3.toFixed(1)} option={"paneer aloo paratha"} onChoose={()=>{
+              sendOption(3)
+              fetchPercent();
+            }}></Unit> 
+
+            <Unit progress={percent4.toFixed(1)} option={"masala bhindi"} onChoose={()=>{
+              sendOption(4)
+              fetchPercent();  
+            }}></Unit>  
+          
+          </div>
+          : null
+        }
 
       </div>
     
