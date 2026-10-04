@@ -112,9 +112,7 @@ wss.on("connection", (socket) => {
           return;
         }
 
-
         // Check whether this socket already has a room
-
         const user = users.find((user) => 
           user.socket === socket
         );
